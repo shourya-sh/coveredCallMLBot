@@ -15,8 +15,17 @@ pip install -r requirements.txt
 Create `backend/.env`:
 ```
 TWELVE_DATA_API_KEY=your_api_key_here
+DASHBOARD_REFRESH_MINUTES=15
+MODEL_RETRAIN_AFTER_HOUR_ET=17
+MODEL_RETRAIN_AFTER_MINUTE_ET=45
 ```
 > No API key? The app runs in **demo mode** with mock data automatically.
+
+### Automated Operations
+
+- Price refresh runs every 10-15 minutes (`DASHBOARD_REFRESH_MINUTES`, defaults to 15) and updates SQLite (`stock_prices`, `ohlc_history`).
+- Nightly model retraining runs after market close (ET) and writes updated artifacts under `backend/strategy_ml/artifacts/`.
+- The API hot-reloads the model automatically when a new nightly artifact appears.
 
 ```bash
 cd backend

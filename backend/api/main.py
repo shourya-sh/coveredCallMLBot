@@ -27,6 +27,7 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 import db
 from scraper import start_background_scraper
+from model_retrainer import start_background_retrainer
 from options_cache import get_options_chain_for_ticker
 
 from api.schemas import (
@@ -100,6 +101,7 @@ def on_startup():
     """Initialize DB and start background price scraper."""
     db.init_db()
     start_background_scraper()
+    start_background_retrainer()
 
 
 # ============================================================================
@@ -443,16 +445,21 @@ async def root():
 
 DASHBOARD_TICKERS = ["SPY", "QQQ", "IWM", "AAPL", "TSLA", "NVDA", "AMZN", "MSFT", "META", "SPX"]
 _strategy_predictor: StrategyPredictor | None = None
+_strategy_model_mtime: float | None = None
 
 
 def _get_strategy_predictor() -> StrategyPredictor | None:
-    global _strategy_predictor
-    if _strategy_predictor is not None:
-        return _strategy_predictor
+    global _strategy_predictor, _strategy_model_mtime
 
     model_path = Path(__file__).resolve().parent.parent / "strategy_ml" / "artifacts" / "options_strategy_model.joblib"
     if not model_path.exists():
+        _strategy_predictor = None
+        _strategy_model_mtime = None
         return None
+
+    mtime = model_path.stat().st_mtime
+    if _strategy_predictor is not None and _strategy_model_mtime == mtime:
+        return _strategy_predictor
 
     try:
         _strategy_predictor = StrategyPredictor(
@@ -460,8 +467,11 @@ def _get_strategy_predictor() -> StrategyPredictor | None:
             confidence_threshold=0.33,
             options_scraper=get_scraper(),
         )
+        _strategy_model_mtime = mtime
         return _strategy_predictor
     except Exception:
+        _strategy_predictor = None
+        _strategy_model_mtime = None
         return None
 
 

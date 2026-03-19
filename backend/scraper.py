@@ -18,7 +18,15 @@ load_dotenv(Path(__file__).parent / ".env")
 from data_ingestion.twelve_data_client import TwelveDataClient, TwelveDataConfig
 from db import init_db, upsert_price, upsert_ohlc, last_updated_any
 
-INTERVAL_SECONDS = 20 * 60  # 20 minutes
+try:
+    import yfinance as yf
+except Exception:
+    yf = None
+
+_refresh_minutes = int(os.getenv("DASHBOARD_REFRESH_MINUTES", "15"))
+if _refresh_minutes < 10 or _refresh_minutes > 15:
+    _refresh_minutes = 15
+INTERVAL_SECONDS = _refresh_minutes * 60
 DASHBOARD_TICKERS = ["SPY", "QQQ", "IWM", "AAPL", "TSLA", "NVDA", "AMZN", "MSFT", "META", "SPX"]
 DEFAULT_OHLC_OUTPUTSIZE = int(os.getenv("DASHBOARD_OHLC_OUTPUTSIZE", "365"))
 
@@ -30,49 +38,92 @@ def _build_client() -> TwelveDataClient | None:
     return TwelveDataClient(TwelveDataConfig(api_key=key))
 
 
-def scrape_once(tickers: list[str] | None = None):
-    """Fetch prices + 30-day OHLC for each ticker and store in DB."""
-    client = _build_client()
-    if client is None:
-        print("[scraper] No TWELVE_DATA_API_KEY — using demo mode, skipping scrape")
-        _seed_demo_data(tickers or DASHBOARD_TICKERS)
-        return
+def _map_yfinance_symbol(ticker: str) -> str:
+    if ticker.upper() == "SPX":
+        return "^GSPC"
+    return ticker.upper()
 
+
+def _fetch_from_yfinance(ticker: str) -> tuple[float, list[dict], float]:
+    if yf is None:
+        raise RuntimeError("yfinance is not available")
+
+    symbol = _map_yfinance_symbol(ticker)
+    hist = yf.Ticker(symbol).history(period=f"{max(30, DEFAULT_OHLC_OUTPUTSIZE)}d", interval="1d", auto_adjust=False)
+    if hist is None or hist.empty:
+        raise RuntimeError(f"No yfinance history for {ticker}")
+
+    bars = []
+    for dt, row in hist.iterrows():
+        bars.append(
+            {
+                "date": dt.strftime("%Y-%m-%d"),
+                "open": float(row.get("Open", 0.0) or 0.0),
+                "high": float(row.get("High", 0.0) or 0.0),
+                "low": float(row.get("Low", 0.0) or 0.0),
+                "close": float(row.get("Close", 0.0) or 0.0),
+                "volume": int(row.get("Volume", 0) or 0),
+            }
+        )
+
+    if not bars:
+        raise RuntimeError(f"No yfinance bars for {ticker}")
+
+    price = bars[-1]["close"]
+    prev_close = bars[-2]["close"] if len(bars) > 1 else price
+    change_pct = round(((price - prev_close) / prev_close) * 100, 2) if prev_close else 0.0
+    return price, bars, change_pct
+
+
+def _fetch_from_twelve_data(client: TwelveDataClient, ticker: str) -> tuple[float, list[dict], float]:
+    price_data = client.get_current_price(ticker)
+    price = price_data.price
+    ohlc = client.get_ohlc_data(ticker, interval="1day", outputsize=DEFAULT_OHLC_OUTPUTSIZE)
+    bars = [
+        {
+            "date": bar.date.strftime("%Y-%m-%d"),
+            "open": bar.open,
+            "high": bar.high,
+            "low": bar.low,
+            "close": bar.close,
+            "volume": bar.volume,
+        }
+        for bar in ohlc
+    ]
+
+    change_pct = 0.0
+    if len(bars) >= 2:
+        prev_close = bars[-2]["close"] if bars[-2]["close"] else bars[-1]["close"]
+        if prev_close:
+            change_pct = round(((price - prev_close) / prev_close) * 100, 2)
+
+    return price, bars, change_pct
+
+
+def scrape_once(tickers: list[str] | None = None):
+    """Fetch latest prices + daily OHLC and store in DB."""
+    client = _build_client()
     tickers = tickers or DASHBOARD_TICKERS
-    print(f"[scraper] Fetching {len(tickers)} tickers from Twelve Data...")
+    print(f"[scraper] Refreshing {len(tickers)} tickers...")
 
     for ticker in tickers:
         try:
-            # Current price
-            price_data = client.get_current_price(ticker)
-            price = price_data.price
-
-            # Pull deeper history to support indicator computation and ML training.
-            ohlc = client.get_ohlc_data(ticker, interval="1day", outputsize=DEFAULT_OHLC_OUTPUTSIZE)
-            bars = []
-            for bar in ohlc:
-                bars.append({
-                    "date": bar.date.strftime("%Y-%m-%d"),
-                    "open": bar.open,
-                    "high": bar.high,
-                    "low": bar.low,
-                    "close": bar.close,
-                    "volume": bar.volume,
-                })
-
-            # Calculate daily change %
-            change_pct = 0.0
-            if len(bars) >= 2:
-                prev_close = bars[-2]["close"] if bars[-2]["close"] else bars[-1]["close"]
-                if prev_close:
-                    change_pct = round(((price - prev_close) / prev_close) * 100, 2)
+            source = "yfinance"
+            try:
+                price, bars, change_pct = _fetch_from_yfinance(ticker)
+            except Exception:
+                if client is None:
+                    raise
+                source = "twelve_data"
+                price, bars, change_pct = _fetch_from_twelve_data(client, ticker)
 
             upsert_price(ticker, price, change_pct)
             upsert_ohlc(ticker, bars)
-            print(f"  [scraper] {ticker}: ${price:.2f} ({change_pct:+.2f}%)")
+            print(f"  [scraper] {ticker}: ${price:.2f} ({change_pct:+.2f}%) via {source}")
 
-            # Be nice to the free-tier rate limit (8 calls/min)
-            time.sleep(8)
+            if source == "twelve_data":
+                # Twelve Data free-tier safety pacing.
+                time.sleep(8)
 
         except Exception as e:
             print(f"  [scraper] {ticker} FAILED: {e}")

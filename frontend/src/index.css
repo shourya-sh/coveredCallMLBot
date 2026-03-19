@@ -1,0 +1,47 @@
+/* ── Global Reset & Dark Finance Theme ── */
+:root {
+  --bg-primary: #0b0e11;
+  --bg-secondary: #141920;
+  --bg-card: #1a1f2e;
+  --bg-card-hover: #222838;
+  --border: #2a3040;
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --accent-green: #00d68f;
+  --accent-red: #ff4d4f;
+  --accent-blue: #58a6ff;
+  --accent-gold: #f0b429;
+  --accent-purple: #a78bfa;
+  --gradient-green: linear-gradient(135deg, #00d68f, #00b87d);
+  --gradient-blue: linear-gradient(135deg, #58a6ff, #388bfd);
+  --shadow-card: 0 2px 16px rgba(0,0,0,.4);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-secondary); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.green { color: var(--accent-green); }
+.red { color: var(--accent-red); }
+.mono { font-family: var(--font-mono); }
+

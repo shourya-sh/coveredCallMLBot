@@ -1,0 +1,106 @@
+{
+  "model_path": "C:\\Users\\shour\\Downloads\\dashy\\backend\\strategy_ml\\artifacts\\options_strategy_model.joblib",
+  "samples_total": 1095,
+  "samples_train": 876,
+  "samples_test": 219,
+  "accuracy": 0.35858585858585856,
+  "confusion_matrix": [
+    [
+      6,
+      0,
+      9,
+      0
+    ],
+    [
+      15,
+      0,
+      1,
+      0
+    ],
+    [
+      95,
+      7,
+      65,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0
+    ]
+  ],
+  "labels": [
+    "BEAR_PUT_SPREAD",
+    "BULL_CALL_SPREAD",
+    "IRON_CONDOR",
+    "LONG_STRADDLE"
+  ],
+  "classification_report": {
+    "BEAR_PUT_SPREAD": {
+      "precision": 0.05172413793103448,
+      "recall": 0.4,
+      "f1-score": 0.0916030534351145,
+      "support": 15.0
+    },
+    "BULL_CALL_SPREAD": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1-score": 0.0,
+      "support": 16.0
+    },
+    "IRON_CONDOR": {
+      "precision": 0.8666666666666667,
+      "recall": 0.38922155688622756,
+      "f1-score": 0.5371900826446281,
+      "support": 167.0
+    },
+    "LONG_STRADDLE": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1-score": 0.0,
+      "support": 0.0
+    },
+    "accuracy": 0.35858585858585856,
+    "macro avg": {
+      "precision": 0.2295977011494253,
+      "recall": 0.19730538922155688,
+      "f1-score": 0.15719828401993566,
+      "support": 198.0
+    },
+    "weighted avg": {
+      "precision": 0.7348949262742367,
+      "recall": 0.35858585858585856,
+      "f1-score": 0.46002418991504856,
+      "support": 198.0
+    }
+  },
+  "feature_importance": {
+    "close": 0.019016427941014047,
+    "sma_20": 0.02091941106880407,
+    "sma_50": 0.018287488672822132,
+    "trend_strength": 0.08404596175517723,
+    "price_vs_sma20": 0.042125233918494015,
+    "price_vs_sma50": 0.04107423220515084,
+    "rsi_14": 0.05672146466792647,
+    "macd": 0.04389183316669984,
+    "macd_signal": 0.050200892224218537,
+    "macd_hist": 0.07194231527270736,
+    "atr_14": 0.03949468388825958,
+    "rolling_std_20": 0.03587739449543333,
+    "hist_vol_20": 0.03561660920645131,
+    "bb_upper": 0.02761052914164029,
+    "bb_lower": 0.018283609634056064,
+    "bb_width": 0.05558078464076884,
+    "volume_spike": 0.027400117449005473,
+    "spy_trend_strength": 0.13952826299773113,
+    "spy_price_vs_sma20": 0.057229845803335816,
+    "spy_hist_vol_20": 0.11515290185030362
+  },
+  "backtest": {
+    "total_return": 6.019507839917985,
+    "win_rate": 0.387434554973822,
+    "avg_return_per_trade": 0.031515747852973744,
+    "trades": 191
+  }
+}

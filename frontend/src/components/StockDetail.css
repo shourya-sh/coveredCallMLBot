@@ -137,11 +137,40 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  width: 100%;
+  text-align: left;
+}
+
+.metric-box.clickable {
+  cursor: pointer;
+  transition: all .15s ease;
+  color: #d8e1ef;
+}
+
+.metric-box.clickable:hover {
+  border-color: var(--accent-blue);
+  transform: translateY(-1px);
+  color: #ffffff;
+}
+
+.metric-box.active {
+  border-color: var(--accent-blue);
+  background: rgba(88, 166, 255, 0.12);
+  color: #ffffff;
 }
 
 .metric-icon { color: var(--accent-blue); }
 .metric-label { font-size: 0.7rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .5px; }
-.metric-value { font-size: 1rem; font-weight: 600; }
+.metric-value { font-size: 1rem; font-weight: 600; color: #e6edf3; }
+
+.metric-box.clickable .metric-label {
+  color: #aebcd4;
+}
+
+.metric-box.clickable.active .metric-label,
+.metric-box.clickable:hover .metric-label {
+  color: #dbe8ff;
+}
 
 /* ── Warnings ── */
 .warnings { margin-top: 12px; }

@@ -1,33 +1,33 @@
 {
   "model_path": "C:\\Users\\shour\\Downloads\\dashy\\backend\\strategy_ml\\artifacts\\options_strategy_model.joblib",
-  "samples_total": 1095,
-  "samples_train": 876,
-  "samples_test": 219,
-  "accuracy": 0.35858585858585856,
+  "samples_total": 3651,
+  "samples_train": 2920,
+  "samples_test": 731,
+  "accuracy": 0.4462934947049924,
   "confusion_matrix": [
     [
-      6,
+      36,
       0,
-      9,
-      0
+      8,
+      5
     ],
     [
-      15,
+      35,
       0,
-      1,
-      0
+      3,
+      2
     ],
     [
-      95,
-      7,
-      65,
-      0
+      224,
+      24,
+      256,
+      43
     ],
     [
+      12,
       0,
-      0,
-      0,
-      0
+      10,
+      3
     ]
   ],
   "labels": [
@@ -38,69 +38,69 @@
   ],
   "classification_report": {
     "BEAR_PUT_SPREAD": {
-      "precision": 0.05172413793103448,
-      "recall": 0.4,
-      "f1-score": 0.0916030534351145,
-      "support": 15.0
+      "precision": 0.11726384364820847,
+      "recall": 0.7346938775510204,
+      "f1-score": 0.20224719101123595,
+      "support": 49.0
     },
     "BULL_CALL_SPREAD": {
       "precision": 0.0,
       "recall": 0.0,
       "f1-score": 0.0,
-      "support": 16.0
+      "support": 40.0
     },
     "IRON_CONDOR": {
-      "precision": 0.8666666666666667,
-      "recall": 0.38922155688622756,
-      "f1-score": 0.5371900826446281,
-      "support": 167.0
+      "precision": 0.924187725631769,
+      "recall": 0.4680073126142596,
+      "f1-score": 0.6213592233009708,
+      "support": 547.0
     },
     "LONG_STRADDLE": {
-      "precision": 0.0,
-      "recall": 0.0,
-      "f1-score": 0.0,
-      "support": 0.0
+      "precision": 0.05660377358490566,
+      "recall": 0.12,
+      "f1-score": 0.07692307692307693,
+      "support": 25.0
     },
-    "accuracy": 0.35858585858585856,
+    "accuracy": 0.4462934947049924,
     "macro avg": {
-      "precision": 0.2295977011494253,
-      "recall": 0.19730538922155688,
-      "f1-score": 0.15719828401993566,
-      "support": 198.0
+      "precision": 0.2745138357162208,
+      "recall": 0.33067529754131997,
+      "f1-score": 0.22513237280882092,
+      "support": 661.0
     },
     "weighted avg": {
-      "precision": 0.7348949262742367,
-      "recall": 0.35858585858585856,
-      "f1-score": 0.46002418991504856,
-      "support": 198.0
+      "precision": 0.7756304214810325,
+      "recall": 0.4462934947049924,
+      "f1-score": 0.5320978584391203,
+      "support": 661.0
     }
   },
   "feature_importance": {
-    "close": 0.019016427941014047,
-    "sma_20": 0.02091941106880407,
-    "sma_50": 0.018287488672822132,
-    "trend_strength": 0.08404596175517723,
-    "price_vs_sma20": 0.042125233918494015,
-    "price_vs_sma50": 0.04107423220515084,
-    "rsi_14": 0.05672146466792647,
-    "macd": 0.04389183316669984,
-    "macd_signal": 0.050200892224218537,
-    "macd_hist": 0.07194231527270736,
-    "atr_14": 0.03949468388825958,
-    "rolling_std_20": 0.03587739449543333,
-    "hist_vol_20": 0.03561660920645131,
-    "bb_upper": 0.02761052914164029,
-    "bb_lower": 0.018283609634056064,
-    "bb_width": 0.05558078464076884,
-    "volume_spike": 0.027400117449005473,
-    "spy_trend_strength": 0.13952826299773113,
-    "spy_price_vs_sma20": 0.057229845803335816,
-    "spy_hist_vol_20": 0.11515290185030362
+    "close": 0.033083527660803726,
+    "sma_20": 0.03639402549362496,
+    "sma_50": 0.03415750974639854,
+    "trend_strength": 0.05006159395927419,
+    "price_vs_sma20": 0.03509584391721739,
+    "price_vs_sma50": 0.030821127499494883,
+    "rsi_14": 0.03908206758911225,
+    "macd": 0.028439197728758043,
+    "macd_signal": 0.031859364385548476,
+    "macd_hist": 0.043939952099551295,
+    "atr_14": 0.03788901354306947,
+    "rolling_std_20": 0.10802265242161378,
+    "hist_vol_20": 0.09800758109975455,
+    "bb_upper": 0.03531274575174306,
+    "bb_lower": 0.03905546675886823,
+    "bb_width": 0.06705463020783628,
+    "volume_spike": 0.03339355325246312,
+    "spy_trend_strength": 0.0990193873797271,
+    "spy_price_vs_sma20": 0.04160864869300955,
+    "spy_hist_vol_20": 0.07770211081213108
   },
   "backtest": {
-    "total_return": 6.019507839917985,
-    "win_rate": 0.387434554973822,
-    "avg_return_per_trade": 0.031515747852973744,
-    "trades": 191
+    "total_return": 156.54083754353482,
+    "win_rate": 0.4801223241590214,
+    "avg_return_per_trade": 0.23935907881274437,
+    "trades": 654
   }
 }

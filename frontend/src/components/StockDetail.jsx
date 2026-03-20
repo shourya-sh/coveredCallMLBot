@@ -1,6 +1,7 @@
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Line, ReferenceLine,
 } from 'recharts';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowUpRight, ArrowDownRight, Shield, Target, Clock, AlertTriangle, X,
 } from 'lucide-react';
@@ -12,7 +13,28 @@ export default function StockDetail({ data, onClose }) {
   const positive = data.change_pct >= 0;
   const rec = data.recommendation;
   const analysis = data.analysis;
-  const actionLabel = analysis?.top_strategy || rec?.action;
+  const actionLabel = analysis?.setup_strategy || analysis?.top_strategy || rec?.action;
+  const setupCandidates = analysis?.strategy_setups || [];
+  const [selectedStrategy, setSelectedStrategy] = useState(actionLabel);
+
+  useEffect(() => {
+    setSelectedStrategy(actionLabel);
+  }, [data?.ticker, actionLabel]);
+
+  const activeSetup = useMemo(() => {
+    if (!setupCandidates.length) {
+      return {
+        strategy: actionLabel,
+        confidence: analysis?.confidence,
+        execution_plan: analysis?.execution_plan,
+      };
+    }
+    return (
+      setupCandidates.find((s) => s.strategy === selectedStrategy)
+      || setupCandidates.find((s) => s.strategy === actionLabel)
+      || setupCandidates[0]
+    );
+  }, [setupCandidates, selectedStrategy, actionLabel, analysis?.confidence, analysis?.execution_plan]);
   const explanation = rec?.explanation || buildAnalysisExplanation(analysis);
   const confidence = analysis?.confidence != null
     ? `${Math.round(analysis.confidence * 100)}%`
@@ -20,6 +42,11 @@ export default function StockDetail({ data, onClose }) {
   const chartData = (data.history || []).map((h) => ({
     date: h.date?.slice(5), // MM-DD
     close: h.close,
+  }));
+  const payoffData = (activeSetup?.execution_plan?.payoff_curve || []).map((p) => ({
+    ...p,
+    profitZone: p.pnl > 0 ? p.pnl : null,
+    lossZone: p.pnl < 0 ? p.pnl : null,
   }));
 
   return (
@@ -39,9 +66,9 @@ export default function StockDetail({ data, onClose }) {
               </span>
             </p>
           </div>
-          {actionLabel && (
+          {activeSetup?.strategy && (
             <span className={`action-badge ${actionLabel === 'NO_TRADE' ? 'hold' : 'sell'}`}>
-              {actionLabel}
+              {activeSetup.strategy}
             </span>
           )}
         </div>
@@ -84,7 +111,14 @@ export default function StockDetail({ data, onClose }) {
             {analysis?.probabilities && (
               <div className="metrics-grid">
                 {Object.entries(analysis.probabilities).map(([name, value]) => (
-                  <MetricBox key={name} label={name} value={`${(value * 100).toFixed(1)}%`} />
+                  <MetricBox
+                    key={name}
+                    label={name}
+                    value={`${(value * 100).toFixed(1)}%`}
+                    clickable
+                    active={activeSetup?.strategy === name}
+                    onClick={() => setSelectedStrategy(name)}
+                  />
                 ))}
               </div>
             )}
@@ -113,32 +147,77 @@ export default function StockDetail({ data, onClose }) {
               </div>
             )}
 
-            {analysis?.execution_plan?.legs && (
+            {activeSetup?.execution_plan?.legs && (
               <div className="alternatives">
                 <h4>Execution Plan</h4>
+                {activeSetup?.execution_plan?.expiry_meta && (
+                  <p className="rec-explanation">
+                    Expiration: {activeSetup.execution_plan.expiry_meta.date} · {activeSetup.execution_plan.expiry_meta.signal}
+                  </p>
+                )}
                 {analysis?.options_chain_source && (
                   <p className="rec-explanation">
                     Options data source: {analysis.options_chain_source}
                     {analysis.options_chain_updated_at ? ` (updated ${analysis.options_chain_updated_at})` : ''}
                   </p>
                 )}
-                {analysis?.execution_plan?.summary && (
+                {activeSetup?.execution_plan?.summary && (
                   <div className="metrics-grid">
-                    <MetricBox label="Upfront Credit" value={`$${analysis.execution_plan.summary.upfront_credit ?? 0}`} />
-                    <MetricBox label="Max Profit" value={analysis.execution_plan.summary.max_profit == null ? 'Unlimited' : `$${analysis.execution_plan.summary.max_profit}`} />
-                    <MetricBox label="Max Loss" value={`$${analysis.execution_plan.summary.max_loss ?? 0}`} />
+                    <MetricBox label="Upfront Credit" value={`$${activeSetup.execution_plan.summary.upfront_credit ?? 0}`} />
+                    <MetricBox label="Max Profit" value={activeSetup.execution_plan.summary.max_profit == null ? 'Unlimited' : `$${activeSetup.execution_plan.summary.max_profit}`} />
+                    <MetricBox label="Max Loss" value={`$${activeSetup.execution_plan.summary.max_loss ?? 0}`} />
+                  </div>
+                )}
+                {payoffData.length > 0 && (
+                  <div className="detail-chart">
+                    <h4 className="section-title">P/L at Expiration</h4>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <ComposedChart data={payoffData}>
+                        <defs>
+                          <linearGradient id="profitZoneFill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#00d68f" stopOpacity={0.45} />
+                            <stop offset="100%" stopColor="#00d68f" stopOpacity={0.08} />
+                          </linearGradient>
+                          <linearGradient id="lossZoneFill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#ff4d4f" stopOpacity={0.08} />
+                            <stop offset="100%" stopColor="#ff4d4f" stopOpacity={0.45} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid stroke="#2a3040" strokeDasharray="3 3" />
+                        <XAxis dataKey="price" tick={{ fill: '#8b949e', fontSize: 11 }} />
+                        <YAxis tick={{ fill: '#8b949e', fontSize: 11 }} width={70} />
+                        <Tooltip
+                          contentStyle={{ background: '#1a1f2e', border: '1px solid #2a3040', borderRadius: 8 }}
+                          labelStyle={{ color: '#8b949e' }}
+                          formatter={(value) => [`$${value}`, 'P/L']}
+                          labelFormatter={(label) => `Underlying: $${label}`}
+                        />
+                        <Area type="monotone" dataKey="profitZone" baseValue={0} fill="url(#profitZoneFill)" stroke="none" connectNulls={false} isAnimationActive={false} />
+                        <Area type="monotone" dataKey="lossZone" baseValue={0} fill="url(#lossZoneFill)" stroke="none" connectNulls={false} isAnimationActive={false} />
+                        <ReferenceLine y={0} stroke="#f0b429" strokeDasharray="4 4" />
+                        {activeSetup.execution_plan.summary?.break_even_lower != null && (
+                          <ReferenceLine x={activeSetup.execution_plan.summary.break_even_lower} stroke="#00d68f" strokeDasharray="3 3" />
+                        )}
+                        {activeSetup.execution_plan.summary?.break_even_upper != null && (
+                          <ReferenceLine x={activeSetup.execution_plan.summary.break_even_upper} stroke="#00d68f" strokeDasharray="3 3" />
+                        )}
+                        <Line type="monotone" dataKey="pnl" stroke="#58a6ff" strokeWidth={2} dot={false} isAnimationActive={false} />
+                      </ComposedChart>
+                    </ResponsiveContainer>
                   </div>
                 )}
                 <table className="alt-table">
                   <thead>
-                    <tr><th>Side</th><th>Type</th><th>Strike</th><th>Mid</th></tr>
+                    <tr><th>Side</th><th>Type</th><th>Strike</th><th>Bid</th><th>Ask</th><th>Mid</th></tr>
                   </thead>
                   <tbody>
-                    {analysis.execution_plan.legs.map((leg, i) => (
+                    {activeSetup.execution_plan.legs.map((leg, i) => (
                       <tr key={i}>
                         <td>{leg.side}</td>
                         <td>{leg.type}</td>
                         <td>${leg.strike}</td>
+                        <td>${leg.bid}</td>
+                        <td>${leg.ask}</td>
                         <td>${leg.mid}</td>
                       </tr>
                     ))}
@@ -192,12 +271,17 @@ function buildAnalysisExplanation(analysis) {
   return `Model suggests ${analysis.top_strategy} from recent trend, momentum, and volatility features.`;
 }
 
-function MetricBox({ icon, label, value }) {
+function MetricBox({ icon, label, value, clickable = false, active = false, onClick }) {
   return (
-    <div className="metric-box">
+    <button
+      type="button"
+      className={`metric-box ${clickable ? 'clickable' : ''} ${active ? 'active' : ''}`}
+      onClick={onClick}
+      disabled={!clickable}
+    >
       {icon && <span className="metric-icon">{icon}</span>}
       <span className="metric-label">{label}</span>
       <span className="metric-value mono">{value}</span>
-    </div>
+    </button>
   );
 }

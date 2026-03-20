@@ -548,8 +548,8 @@ async def single_stock(ticker: str):
         options_contracts, chain_source = get_options_chain_for_ticker(
             ticker=ticker,
             scraper=get_scraper(),
-            max_expirations=1,
-            force_refresh=False,
+            max_expirations=4,
+            force_refresh=True,
         )
         chain_updated_at = db.get_option_chain_last_updated(ticker)
     except Exception:
@@ -557,7 +557,7 @@ async def single_stock(ticker: str):
 
     analysis = predictor.predict_ticker_with_execution_plan(
         ticker=ticker,
-        contracts_override=options_contracts if options_contracts else None,
+        contracts_override=options_contracts,
     )
     analysis["options_chain_source"] = chain_source
     analysis["options_chain_updated_at"] = chain_updated_at

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import joblib
@@ -17,8 +18,74 @@ from strategy_ml.types import StrategyClass
 def _nearest_expiration_contracts(contracts: list[OptionContract]) -> list[OptionContract]:
     if not contracts:
         return []
-    nearest = min(c.expiration for c in contracts)
-    return [c for c in contracts if c.expiration == nearest]
+    now = datetime.now()
+    expirations = sorted({c.expiration for c in contracts if c.expiration >= now})
+    if not expirations:
+        expirations = sorted({c.expiration for c in contracts})
+    if not expirations:
+        return []
+
+    # Prefer the nearest Friday expiration at/after the next Friday.
+    days_until_friday = (4 - now.weekday()) % 7
+    if days_until_friday == 0:
+        days_until_friday = 7
+    target_friday = (now + timedelta(days=days_until_friday)).date()
+    friday_candidates = [e for e in expirations if e.weekday() == 4 and e.date() >= target_friday]
+    chosen = friday_candidates[0] if friday_candidates else expirations[0]
+    return [c for c in contracts if c.expiration == chosen]
+
+
+def _expiry_meta(expiration: datetime) -> dict:
+    dte = max(0, (expiration.date() - datetime.now().date()).days)
+    if dte == 0:
+        signal = "Expires today"
+    elif dte == 1:
+        signal = "Expires tomorrow"
+    elif dte <= 3:
+        signal = f"Expires in {dte} days"
+    elif expiration.weekday() == 4 and dte <= 7:
+        signal = "Expires this Friday"
+    else:
+        signal = f"Expires in {dte} days"
+
+    return {"date": expiration.strftime("%Y-%m-%d"), "days_to_expiration": dte, "signal": signal}
+
+
+def _build_payoff_curve(
+    strategy: StrategyClass,
+    spot: float,
+    *,
+    k1: float,
+    k2: float | None = None,
+    k3: float | None = None,
+    k4: float | None = None,
+    net_premium_per_share: float = 0.0,
+) -> list[dict]:
+    if spot <= 0:
+        return []
+
+    points = []
+    lo = spot * 0.7
+    hi = spot * 1.3
+    steps = 40
+    for i in range(steps + 1):
+        s = lo + ((hi - lo) * i / steps)
+        pnl = 0.0
+
+        if strategy == StrategyClass.BULL_CALL_SPREAD and k2 is not None:
+            pnl = max(s - k1, 0.0) - max(s - k2, 0.0) + net_premium_per_share
+        elif strategy == StrategyClass.BEAR_PUT_SPREAD and k2 is not None:
+            pnl = max(k1 - s, 0.0) - max(k2 - s, 0.0) + net_premium_per_share
+        elif strategy == StrategyClass.IRON_CONDOR and k2 is not None and k3 is not None and k4 is not None:
+            put_loss = max(k3 - s, 0.0) - max(k4 - s, 0.0)
+            call_loss = max(s - k1, 0.0) - max(s - k2, 0.0)
+            pnl = net_premium_per_share - put_loss - call_loss
+        elif strategy == StrategyClass.LONG_STRADDLE:
+            pnl = max(s - k1, 0.0) + max(k1 - s, 0.0) + net_premium_per_share
+
+        points.append({"price": round(s, 2), "pnl": round(pnl * 100, 2)})
+
+    return points
 
 
 def _build_execution_plan(
@@ -44,16 +111,26 @@ def _build_execution_plan(
         return {
             "strategy": strategy.value,
             "expiration": long_call.expiration.strftime("%Y-%m-%d"),
+            "expiry_meta": _expiry_meta(long_call.expiration),
             "legs": [
-                {"side": "BUY", "type": "CALL", "strike": long_call.strike, "mid": round(long_call.mid_price, 4)},
-                {"side": "SELL", "type": "CALL", "strike": short_call.strike, "mid": round(short_call.mid_price, 4)},
+                {"side": "BUY", "type": "CALL", "strike": long_call.strike, "bid": round(long_call.bid, 4), "ask": round(long_call.ask, 4), "mid": round(long_call.mid_price, 4)},
+                {"side": "SELL", "type": "CALL", "strike": short_call.strike, "bid": round(short_call.bid, 4), "ask": round(short_call.ask, 4), "mid": round(short_call.mid_price, 4)},
             ],
             "summary": {
                 "upfront_credit": 0.0,
                 "net_premium": round(-net_debit * 100, 2),
                 "max_profit": round(max_profit * 100, 2),
                 "max_loss": round(max_loss * 100, 2),
+                "break_even_lower": round(long_call.strike + net_debit, 2),
+                "break_even_upper": None,
             },
+            "payoff_curve": _build_payoff_curve(
+                strategy,
+                spot,
+                k1=long_call.strike,
+                k2=short_call.strike,
+                net_premium_per_share=-net_debit,
+            ),
         }
 
     if strategy == StrategyClass.BEAR_PUT_SPREAD and puts:
@@ -67,16 +144,26 @@ def _build_execution_plan(
         return {
             "strategy": strategy.value,
             "expiration": long_put.expiration.strftime("%Y-%m-%d"),
+            "expiry_meta": _expiry_meta(long_put.expiration),
             "legs": [
-                {"side": "BUY", "type": "PUT", "strike": long_put.strike, "mid": round(long_put.mid_price, 4)},
-                {"side": "SELL", "type": "PUT", "strike": short_put.strike, "mid": round(short_put.mid_price, 4)},
+                {"side": "BUY", "type": "PUT", "strike": long_put.strike, "bid": round(long_put.bid, 4), "ask": round(long_put.ask, 4), "mid": round(long_put.mid_price, 4)},
+                {"side": "SELL", "type": "PUT", "strike": short_put.strike, "bid": round(short_put.bid, 4), "ask": round(short_put.ask, 4), "mid": round(short_put.mid_price, 4)},
             ],
             "summary": {
                 "upfront_credit": 0.0,
                 "net_premium": round(-net_debit * 100, 2),
                 "max_profit": round(max_profit * 100, 2),
                 "max_loss": round(max_loss * 100, 2),
+                "break_even_lower": round(long_put.strike - net_debit, 2),
+                "break_even_upper": None,
             },
+            "payoff_curve": _build_payoff_curve(
+                strategy,
+                spot,
+                k1=long_put.strike,
+                k2=short_put.strike,
+                net_premium_per_share=-net_debit,
+            ),
         }
 
     if strategy == StrategyClass.IRON_CONDOR and calls and puts:
@@ -93,18 +180,30 @@ def _build_execution_plan(
         return {
             "strategy": strategy.value,
             "expiration": short_call.expiration.strftime("%Y-%m-%d"),
+            "expiry_meta": _expiry_meta(short_call.expiration),
             "legs": [
-                {"side": "SELL", "type": "CALL", "strike": short_call.strike, "mid": round(short_call.mid_price, 4)},
-                {"side": "BUY", "type": "CALL", "strike": long_call.strike, "mid": round(long_call.mid_price, 4)},
-                {"side": "SELL", "type": "PUT", "strike": short_put.strike, "mid": round(short_put.mid_price, 4)},
-                {"side": "BUY", "type": "PUT", "strike": long_put.strike, "mid": round(long_put.mid_price, 4)},
+                {"side": "SELL", "type": "CALL", "strike": short_call.strike, "bid": round(short_call.bid, 4), "ask": round(short_call.ask, 4), "mid": round(short_call.mid_price, 4)},
+                {"side": "BUY", "type": "CALL", "strike": long_call.strike, "bid": round(long_call.bid, 4), "ask": round(long_call.ask, 4), "mid": round(long_call.mid_price, 4)},
+                {"side": "SELL", "type": "PUT", "strike": short_put.strike, "bid": round(short_put.bid, 4), "ask": round(short_put.ask, 4), "mid": round(short_put.mid_price, 4)},
+                {"side": "BUY", "type": "PUT", "strike": long_put.strike, "bid": round(long_put.bid, 4), "ask": round(long_put.ask, 4), "mid": round(long_put.mid_price, 4)},
             ],
             "summary": {
                 "upfront_credit": round(max(0.0, net_credit) * 100, 2),
                 "net_premium": round(net_credit * 100, 2),
                 "max_profit": round(max_profit * 100, 2),
                 "max_loss": round(max_loss * 100, 2),
+                "break_even_lower": round(short_put.strike - max(0.0, net_credit), 2),
+                "break_even_upper": round(short_call.strike + max(0.0, net_credit), 2),
             },
+            "payoff_curve": _build_payoff_curve(
+                strategy,
+                spot,
+                k1=short_call.strike,
+                k2=long_call.strike,
+                k3=short_put.strike,
+                k4=long_put.strike,
+                net_premium_per_share=net_credit,
+            ),
         }
 
     if strategy == StrategyClass.LONG_STRADDLE and calls and puts:
@@ -114,19 +213,51 @@ def _build_execution_plan(
         return {
             "strategy": strategy.value,
             "expiration": call.expiration.strftime("%Y-%m-%d"),
+            "expiry_meta": _expiry_meta(call.expiration),
             "legs": [
-                {"side": "BUY", "type": "CALL", "strike": call.strike, "mid": round(call.mid_price, 4)},
-                {"side": "BUY", "type": "PUT", "strike": put.strike, "mid": round(put.mid_price, 4)},
+                {"side": "BUY", "type": "CALL", "strike": call.strike, "bid": round(call.bid, 4), "ask": round(call.ask, 4), "mid": round(call.mid_price, 4)},
+                {"side": "BUY", "type": "PUT", "strike": put.strike, "bid": round(put.bid, 4), "ask": round(put.ask, 4), "mid": round(put.mid_price, 4)},
             ],
             "summary": {
                 "upfront_credit": 0.0,
                 "net_premium": round(-net_debit * 100, 2),
                 "max_profit": None,
                 "max_loss": round(net_debit * 100, 2),
+                "break_even_lower": round(call.strike - net_debit, 2),
+                "break_even_upper": round(call.strike + net_debit, 2),
             },
+            "payoff_curve": _build_payoff_curve(
+                strategy,
+                spot,
+                k1=call.strike,
+                net_premium_per_share=-net_debit,
+            ),
         }
 
     return None
+
+
+def _build_strategy_setups(
+    probs: dict[str, float],
+    contracts: list[OptionContract],
+    spot: float,
+) -> list[dict]:
+    setups: list[dict] = []
+    ordered = sorted(probs.items(), key=lambda x: -x[1])
+
+    for label, prob in ordered:
+        if label == StrategyClass.NO_TRADE.value:
+            continue
+        plan = _build_execution_plan(StrategyClass(label), contracts, spot) if contracts else None
+        setups.append(
+            {
+                "strategy": label,
+                "confidence": round(float(prob), 4),
+                "execution_plan": plan,
+            }
+        )
+
+    return setups
 
 
 class StrategyPredictor:
@@ -199,7 +330,8 @@ class StrategyPredictor:
         labels = self.label_encoder.inverse_transform(np.arange(len(probs_arr)))
         probs = {label: float(prob) for label, prob in zip(labels, probs_arr)}
 
-        top_strategy = max(probs.items(), key=lambda x: x[1])[0]
+        raw_top_strategy = max(probs.items(), key=lambda x: x[1])[0]
+        top_strategy = raw_top_strategy
         confidence = probs[top_strategy]
 
         risk_flags = []
@@ -231,7 +363,13 @@ class StrategyPredictor:
                 risk_flags.append("low_liquidity")
 
         spot = float(latest["close"].iloc[0])
-        execution_plan = _build_execution_plan(StrategyClass(top_strategy), contracts, spot) if include_execution_plan else None
+        execution_strategy = top_strategy
+        if include_execution_plan and execution_strategy == StrategyClass.NO_TRADE.value and contracts and raw_top_strategy != StrategyClass.NO_TRADE.value:
+            execution_strategy = raw_top_strategy
+            risk_flags.append("setup_from_low_confidence_signal")
+
+        execution_plan = _build_execution_plan(StrategyClass(execution_strategy), contracts, spot) if include_execution_plan else None
+        strategy_setups = _build_strategy_setups(probs, contracts, spot) if include_execution_plan else []
 
         return {
             "ticker": ticker,
@@ -241,6 +379,8 @@ class StrategyPredictor:
             "risk_flags": risk_flags,
             "liquidity_score": liquidity_score,
             "execution_plan": execution_plan,
+            "setup_strategy": execution_strategy if include_execution_plan else None,
+            "strategy_setups": strategy_setups,
         }
 
     def predict_universe(self, tickers: list[str], interval: str = "1day", limit: int = 400) -> list[dict]:

@@ -61,6 +61,12 @@ def init_db():
             updated_at          TEXT NOT NULL,
             PRIMARY KEY (ticker, expiration, contract_type, strike)
         );
+
+        CREATE TABLE IF NOT EXISTS options_chain_meta (
+            ticker      TEXT PRIMARY KEY,
+            source      TEXT NOT NULL,
+            updated_at  TEXT NOT NULL
+        );
     """)
     conn.commit()
 
@@ -99,7 +105,7 @@ def upsert_ohlc(ticker: str, bars: list[dict]):
     conn.commit()
 
 
-def upsert_option_chain(ticker: str, contracts: list):
+def upsert_option_chain(ticker: str, contracts: list, source: str = "yahoo"):
     """Store option chain snapshot for ticker; replaces previous snapshot rows."""
     conn = _get_conn()
     now = datetime.now().isoformat()
@@ -127,6 +133,14 @@ def upsert_option_chain(ticker: str, contracts: list):
             )
             for c in contracts
         ],
+    )
+    conn.execute(
+        """INSERT INTO options_chain_meta (ticker, source, updated_at)
+           VALUES (?, ?, ?)
+           ON CONFLICT(ticker) DO UPDATE SET
+             source=excluded.source,
+             updated_at=excluded.updated_at""",
+        (ticker, source, now),
     )
     conn.commit()
 
@@ -194,3 +208,12 @@ def get_option_chain_last_updated(ticker: str) -> Optional[str]:
         (ticker,),
     ).fetchone()
     return row["ts"] if row and row["ts"] else None
+
+
+def get_option_chain_source(ticker: str) -> Optional[str]:
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT source FROM options_chain_meta WHERE ticker=?",
+        (ticker,),
+    ).fetchone()
+    return row["source"] if row and row["source"] else None

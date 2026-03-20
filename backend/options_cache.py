@@ -9,6 +9,7 @@ from data_ingestion.options_scraper import OptionContract, YahooFinanceOptionsSc
 
 
 OPTIONS_CACHE_MAX_AGE_MINUTES = int(os.getenv("OPTIONS_CACHE_MAX_AGE_MINUTES", "30"))
+OPTIONS_ALLOW_SYNTHETIC_FALLBACK = os.getenv("OPTIONS_ALLOW_SYNTHETIC_FALLBACK", "false").lower() == "true"
 
 
 def _parse_dt(value: str | None) -> datetime | None:
@@ -137,34 +138,38 @@ def get_options_chain_for_ticker(
     rows = db.get_option_chain(ticker)
     cached_contracts = _rows_to_contracts(rows)
     last_updated = _parse_dt(db.get_option_chain_last_updated(ticker))
+    cached_source = db.get_option_chain_source(ticker) or "unknown"
+    trusted_cached = cached_source != "unknown"
 
     cache_fresh = False
     if last_updated is not None:
         age = datetime.now() - last_updated
         cache_fresh = age <= timedelta(minutes=OPTIONS_CACHE_MAX_AGE_MINUTES)
 
-    if not force_refresh and cached_contracts and cache_fresh:
-        return cached_contracts, "cache"
+    if not force_refresh and cached_contracts and cache_fresh and trusted_cached:
+        return cached_contracts, f"cache:{cached_source}"
 
     try:
         chain = scraper.get_all_expirations(ticker, max_expirations=max_expirations, include_puts=True)
         contracts = [contract for bucket in chain.values() for contract in bucket]
         if contracts:
-            db.upsert_option_chain(ticker, contracts)
-            return contracts, "live"
+            db.upsert_option_chain(ticker, contracts, source="nasdaq")
+            return contracts, "live:nasdaq"
     except Exception:
-        if cached_contracts:
-            return cached_contracts, "stale_cache"
-        synthetic = _build_synthetic_chain(ticker)
-        if synthetic:
-            db.upsert_option_chain(ticker, synthetic)
-            return synthetic, "synthetic"
+        if cached_contracts and trusted_cached:
+            return cached_contracts, f"stale_cache:{cached_source}"
+        if OPTIONS_ALLOW_SYNTHETIC_FALLBACK:
+            synthetic = _build_synthetic_chain(ticker)
+            if synthetic:
+                db.upsert_option_chain(ticker, synthetic, source="synthetic")
+                return synthetic, "live:synthetic_estimated"
         raise
 
-    if cached_contracts:
-        return cached_contracts, "stale_cache"
-    synthetic = _build_synthetic_chain(ticker)
-    if synthetic:
-        db.upsert_option_chain(ticker, synthetic)
-        return synthetic, "synthetic"
+    if cached_contracts and trusted_cached:
+        return cached_contracts, f"stale_cache:{cached_source}"
+    if OPTIONS_ALLOW_SYNTHETIC_FALLBACK:
+        synthetic = _build_synthetic_chain(ticker)
+        if synthetic:
+            db.upsert_option_chain(ticker, synthetic, source="synthetic")
+            return synthetic, "live:synthetic_estimated"
     return [], "empty"

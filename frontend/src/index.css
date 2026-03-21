@@ -1,24 +1,26 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
 /* ── Global Reset & Dark Finance Theme ── */
 :root {
-  --bg-primary: #0b0e11;
-  --bg-secondary: #141920;
-  --bg-card: #1a1f2e;
-  --bg-card-hover: #222838;
-  --border: #2a3040;
-  --text-primary: #e6edf3;
-  --text-secondary: #8b949e;
-  --accent-green: #00d68f;
-  --accent-red: #ff4d4f;
-  --accent-blue: #58a6ff;
-  --accent-gold: #f0b429;
+  --bg-primary: #0f0c1e;
+  --bg-secondary: #17142a;
+  --bg-card: #211c39;
+  --bg-card-hover: #2a2447;
+  --border: #353050;
+  --text-primary: #eeecf7;
+  --text-secondary: #b5afc9;
+  --accent-green: #24d798;
+  --accent-red: #ff5470;
+  --accent-blue: #35c2ff;
+  --accent-gold: #ffd56b;
   --accent-purple: #a78bfa;
-  --gradient-green: linear-gradient(135deg, #00d68f, #00b87d);
-  --gradient-blue: linear-gradient(135deg, #58a6ff, #388bfd);
+  --gradient-green: linear-gradient(135deg, #24d798, #12b980);
+  --gradient-blue: linear-gradient(135deg, #35c2ff, #1f95ff);
   --shadow-card: 0 2px 16px rgba(0,0,0,.4);
   --radius: 12px;
   --radius-sm: 8px;
-  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  --font: 'Space Grotesk', 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', 'JetBrains Mono', monospace;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }

@@ -28,7 +28,7 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 import db
 from scraper import start_background_scraper
 from model_retrainer import start_background_retrainer
-from options_cache import get_options_chain_for_ticker
+from options_cache import get_options_chain_for_ticker, get_cached_options_chain_for_ticker
 
 from api.schemas import (
     PortfolioEvaluationRequest,
@@ -446,6 +446,9 @@ async def root():
 DASHBOARD_TICKERS = ["SPY", "QQQ", "IWM", "AAPL", "TSLA", "NVDA", "AMZN", "MSFT", "META", "SPX"]
 _strategy_predictor: StrategyPredictor | None = None
 _strategy_model_mtime: float | None = None
+_dashboard_cache_payload: dict | None = None
+_dashboard_cache_expires_at: float = 0.0
+_dashboard_cache_ttl_seconds: int = int(os.getenv("DASHBOARD_CACHE_TTL_SECONDS", "20"))
 
 
 def _get_strategy_predictor() -> StrategyPredictor | None:
@@ -517,14 +520,38 @@ def _snapshot_from_db(ticker: str) -> dict:
 
 @app.get("/dashboard/stocks", tags=["Dashboard"])
 async def dashboard_stocks():
-    """Return snapshots for the 10 default tickers — reads from local DB, zero latency."""
+    """Return snapshots plus cached execution-plan summaries for dashboard tickers."""
+    global _dashboard_cache_payload, _dashboard_cache_expires_at
+
+    now = time.time()
+    if _dashboard_cache_payload is not None and now < _dashboard_cache_expires_at:
+        return _dashboard_cache_payload
+
     stocks = []
+    predictor = _get_strategy_predictor()
+
     for ticker in DASHBOARD_TICKERS:
         snapshot = _snapshot_from_db(ticker)
-        snapshot["analysis"] = _ml_analysis_for_ticker(ticker, include_execution_plan=False)
+
+        if predictor is None:
+            analysis = _ml_analysis_for_ticker(ticker, include_execution_plan=False)
+        else:
+            contracts, chain_source = get_cached_options_chain_for_ticker(ticker)
+            analysis = predictor.predict_ticker_with_execution_plan(
+                ticker=ticker,
+                contracts_override=contracts,
+            )
+            analysis["options_chain_source"] = chain_source
+            analysis["options_chain_updated_at"] = db.get_option_chain_last_updated(ticker)
+
+        snapshot["analysis"] = analysis
         stocks.append(snapshot)
+
     last = db.last_updated_any()
-    return {"stocks": stocks, "last_updated": last}
+    payload = {"stocks": stocks, "last_updated": last}
+    _dashboard_cache_payload = payload
+    _dashboard_cache_expires_at = now + _dashboard_cache_ttl_seconds
+    return payload
 
 
 @app.get("/stock/{ticker}", tags=["Dashboard"])
@@ -548,8 +575,8 @@ async def single_stock(ticker: str):
         options_contracts, chain_source = get_options_chain_for_ticker(
             ticker=ticker,
             scraper=get_scraper(),
-            max_expirations=4,
-            force_refresh=True,
+            max_expirations=2,
+            force_refresh=False,
         )
         chain_updated_at = db.get_option_chain_last_updated(ticker)
     except Exception:

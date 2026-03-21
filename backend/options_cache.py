@@ -139,14 +139,13 @@ def get_options_chain_for_ticker(
     cached_contracts = _rows_to_contracts(rows)
     last_updated = _parse_dt(db.get_option_chain_last_updated(ticker))
     cached_source = db.get_option_chain_source(ticker) or "unknown"
-    trusted_cached = cached_source != "unknown"
 
     cache_fresh = False
     if last_updated is not None:
         age = datetime.now() - last_updated
         cache_fresh = age <= timedelta(minutes=OPTIONS_CACHE_MAX_AGE_MINUTES)
 
-    if not force_refresh and cached_contracts and cache_fresh and trusted_cached:
+    if not force_refresh and cached_contracts and cache_fresh:
         return cached_contracts, f"cache:{cached_source}"
 
     try:
@@ -156,7 +155,7 @@ def get_options_chain_for_ticker(
             db.upsert_option_chain(ticker, contracts, source="nasdaq")
             return contracts, "live:nasdaq"
     except Exception:
-        if cached_contracts and trusted_cached:
+        if cached_contracts:
             return cached_contracts, f"stale_cache:{cached_source}"
         if OPTIONS_ALLOW_SYNTHETIC_FALLBACK:
             synthetic = _build_synthetic_chain(ticker)
@@ -165,11 +164,23 @@ def get_options_chain_for_ticker(
                 return synthetic, "live:synthetic_estimated"
         raise
 
-    if cached_contracts and trusted_cached:
+    if cached_contracts:
         return cached_contracts, f"stale_cache:{cached_source}"
     if OPTIONS_ALLOW_SYNTHETIC_FALLBACK:
         synthetic = _build_synthetic_chain(ticker)
         if synthetic:
             db.upsert_option_chain(ticker, synthetic, source="synthetic")
             return synthetic, "live:synthetic_estimated"
+    return [], "empty"
+
+
+def get_cached_options_chain_for_ticker(ticker: str) -> tuple[list[OptionContract], str]:
+    """Return contracts from DB cache only (no network calls)."""
+    ticker = ticker.upper()
+    rows = db.get_option_chain(ticker)
+    contracts = _rows_to_contracts(rows)
+    source = db.get_option_chain_source(ticker) or "unknown"
+
+    if contracts:
+        return contracts, f"cache:{source}"
     return [], "empty"

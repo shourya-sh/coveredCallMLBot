@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { useDashboardStocks, useStockLookup } from './hooks';
 import StockDetail from './components/StockDetail';
-import LoadingSpinner from './components/LoadingSpinner';
+import DashboardSkeleton from './components/DashboardSkeleton';
 import './App.css';
 
 export default function App() {
@@ -103,7 +103,7 @@ export default function App() {
       </header>
 
       {loading && !stocks ? (
-        <LoadingSpinner message="Ranking dashboard opportunities..." />
+        <DashboardSkeleton />
       ) : featured ? (
         <main className="strategy-layout">
           <section className="featured-pick" onClick={() => handleCardClick(featured.ticker)}>
@@ -245,13 +245,16 @@ export default function App() {
           </aside>
         </main>
       ) : (
-        <LoadingSpinner message="No dashboard tickers available right now." />
+        <DashboardSkeleton />
       )}
 
       {/* Detail modal */}
       {detailLoading && (
         <div className="detail-overlay">
-          <LoadingSpinner message="Analyzing options..." />
+          <div className="ring-spinner-wrap">
+            <div className="ring-spinner" />
+            <span className="ring-spinner-label">Analyzing options...</span>
+          </div>
         </div>
       )}
       {detail && !detailLoading && (

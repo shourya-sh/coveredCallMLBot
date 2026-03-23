@@ -29,7 +29,7 @@ import LoadingSpinner from './components/LoadingSpinner';
 import './App.css';
 
 export default function App() {
-  const { data: stocks, loading, lastUpdated, refresh } = useDashboardStocks();
+  const { data: stocks, loading, analysisReady, lastUpdated, refresh } = useDashboardStocks();
   const { result: detail, loading: detailLoading, lookup, clear } = useStockLookup();
   const [query, setQuery] = useState('');
 
@@ -37,19 +37,19 @@ export default function App() {
     if (!stocks) return [];
     return [...stocks]
       .map((stock) => {
-        const analysis = stock.analysis || {};
-        const topStrategy = analysis.top_strategy || 'NO_TRADE';
-        const confidence = Number(analysis.confidence || 0);
+        const analysis = stock.analysis || null;
+        const topStrategy = analysis?.top_strategy || null;
+        const confidence = Number(analysis?.confidence || 0);
         const trendBoost = Number(stock.change_pct || 0) > 0 ? 2 : 0;
-        const strategyBoost = topStrategy === 'NO_TRADE' ? 0 : 8;
+        const strategyBoost = topStrategy && topStrategy !== 'NO_TRADE' ? 8 : 0;
 
         return {
           ...stock,
-          analysis,
+          analysis: analysis || {},
           strategy: topStrategy,
           confidence,
           score: confidence * 100 + strategyBoost + trendBoost,
-          executionPlan: analysis.execution_plan || null,
+          executionPlan: analysis?.execution_plan || null,
         };
       })
       .sort((a, b) => b.score - a.score);
@@ -92,6 +92,9 @@ export default function App() {
 
           <div className="refresh-shell">
             {lastUpdated && <span>Data refreshed: {lastUpdated}</span>}
+            {!analysisReady && stocks && (
+              <span style={{ fontSize: 12, opacity: 0.5 }}>Analyzing...</span>
+            )}
             <button type="button" onClick={refresh} disabled={loading}>
               {loading ? <Loader2 size={16} className="spin" /> : <RefreshCw size={16} />}
             </button>
@@ -322,11 +325,13 @@ function formatCurrency(value) {
 }
 
 function formatStrategy(strategy) {
-  if (!strategy) return 'No Trade';
+  if (strategy === null || strategy === undefined) return '—';
+  if (strategy === 'NO_TRADE') return 'No Trade';
   return strategy.replaceAll('_', ' ');
 }
 
 function getOutlook(strategy) {
+  if (strategy === null || strategy === undefined) return { label: '…', tone: 'neutral', Icon: Minus };
   const normalized = String(strategy || '').toUpperCase();
   if (normalized.includes('BULL')) {
     return { label: 'Bullish', tone: 'bullish', Icon: TrendingUp };

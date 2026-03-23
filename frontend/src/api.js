@@ -1,5 +1,11 @@
 const BASE = '/api';
 
+export async function fetchDashboardSnapshots() {
+  const res = await fetch(`${BASE}/dashboard/snapshots`);
+  if (!res.ok) throw new Error('Failed to fetch snapshots');
+  return res.json();
+}
+
 export async function fetchDashboardStocks() {
   const res = await fetch(`${BASE}/dashboard/stocks`);
   if (!res.ok) throw new Error('Failed to fetch dashboard stocks');

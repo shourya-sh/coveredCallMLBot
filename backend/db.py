@@ -134,6 +134,21 @@ def load_candles(ticker: str, interval: str = "1day", limit: int = 1825) -> list
     return [dict(r) for r in rows]
 
 
+def get_latest_candle_datetime(ticker: str, interval: str = "1day") -> Optional[datetime]:
+    """Return latest candle timestamp for ticker/interval, or None."""
+    with _conn() as conn:
+        row = conn.execute(
+            """
+            SELECT MAX(c.datetime) AS ts
+            FROM candles c
+            JOIN symbols s ON s.id = c.symbol_id
+            WHERE s.ticker = %s AND c.interval = %s
+            """,
+            (ticker.upper(), interval),
+        ).fetchone()
+    return row["ts"] if row and row["ts"] else None
+
+
 # ── Options chain cache ───────────────────────────────────────────────────────
 
 def upsert_options_chain(ticker: str, contracts: list, source: str = "nasdaq"):

@@ -32,6 +32,15 @@ def _api_get(client: httpx.Client, url: str, params: dict) -> dict:
     return data
 
 
+def _parse_api_datetime(value: str) -> datetime:
+    # Twelve Data returns naive "YYYY-MM-DD HH:MM:SS" for time_series rows.
+    # If the string ever carries a timezone suffix (e.g. "Z"), strip it so the
+    # result is always naive — comparisons against latest_dt.replace(tzinfo=None)
+    # would raise TypeError if this returned an aware datetime.
+    dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return dt.replace(tzinfo=None)
+
+
 def fetch_ticker(ticker: str, api_key: str, outputsize: int = 1825) -> tuple[float, list[dict], float]:
     symbol = _map_symbol(ticker)
     client = httpx.Client(timeout=15)
@@ -71,22 +80,34 @@ def fetch_ticker(ticker: str, api_key: str, outputsize: int = 1825) -> tuple[flo
     return price, bars, change_pct
 
 
-def scrape_once(tickers: list[str] | None = None):
+def scrape_once(tickers: list[str] | None = None, *, full_history: bool = False):
     from config import settings
     import db
 
     api_key = settings.twelve_data_api_key
     tickers = tickers or DASHBOARD_TICKERS
+    ohlc_outputsize = settings.ohlc_outputsize if full_history else min(settings.ohlc_outputsize, 5)
     started = time.time()
-    print(f"[scraper] Starting scrape for {len(tickers)} tickers...")
+    mode = "full backfill" if full_history else "incremental"
+    print(f"[scraper] Starting {mode} scrape for {len(tickers)} tickers...")
 
     ok, failed = 0, 0
     for ticker in tickers:
         try:
-            price, bars, change_pct = fetch_ticker(ticker, api_key, outputsize=settings.ohlc_outputsize)
+            latest_dt = db.get_latest_candle_datetime(ticker, interval="1day")
+            price, bars, change_pct = fetch_ticker(ticker, api_key, outputsize=ohlc_outputsize)
+            if latest_dt is None:
+                bars_to_write = bars
+                new_bars = len(bars)
+            else:
+                bars_to_write = [b for b in bars if _parse_api_datetime(b["date"]) >= latest_dt.replace(tzinfo=None)]
+                new_bars = sum(1 for b in bars if _parse_api_datetime(b["date"]) > latest_dt.replace(tzinfo=None))
             db.upsert_price(ticker, price, change_pct)
-            db.upsert_ohlc(ticker, bars)
-            print(f"  [scraper] {ticker}: ${price:.2f} ({change_pct:+.2f}%) — {len(bars)} candles")
+            db.upsert_ohlc(ticker, bars_to_write)
+            print(
+                f"  [scraper] {ticker}: ${price:.2f} ({change_pct:+.2f}%) "
+                f"— fetched {len(bars)} bars, wrote {len(bars_to_write)} (new {new_bars})"
+            )
             ok += 1
             time.sleep(9)  # 9s between tickers so we stay under 8 credits/min
         except RuntimeError as e:
@@ -94,10 +115,20 @@ def scrape_once(tickers: list[str] | None = None):
             print(f"  [scraper] {ticker} rate limited, waiting 60s...")
             time.sleep(60)
             try:
-                price, bars, change_pct = fetch_ticker(ticker, api_key, outputsize=settings.ohlc_outputsize)
+                latest_dt = db.get_latest_candle_datetime(ticker, interval="1day")
+                price, bars, change_pct = fetch_ticker(ticker, api_key, outputsize=ohlc_outputsize)
+                if latest_dt is None:
+                    bars_to_write = bars
+                    new_bars = len(bars)
+                else:
+                    bars_to_write = [b for b in bars if _parse_api_datetime(b["date"]) >= latest_dt.replace(tzinfo=None)]
+                    new_bars = sum(1 for b in bars if _parse_api_datetime(b["date"]) > latest_dt.replace(tzinfo=None))
                 db.upsert_price(ticker, price, change_pct)
-                db.upsert_ohlc(ticker, bars)
-                print(f"  [scraper] {ticker}: ${price:.2f} ({change_pct:+.2f}%) — {len(bars)} candles (retry ok)")
+                db.upsert_ohlc(ticker, bars_to_write)
+                print(
+                    f"  [scraper] {ticker}: ${price:.2f} ({change_pct:+.2f}%) "
+                    f"— fetched {len(bars)} bars, wrote {len(bars_to_write)} (new {new_bars}) (retry ok)"
+                )
                 ok += 1
             except Exception as e2:
                 print(f"  [scraper] {ticker} FAILED after retry: {e2}")
@@ -116,7 +147,7 @@ def _run_loop(interval_seconds: int):
         try:
             time.sleep(interval_seconds)
             print(f"[scraper] Scheduled refresh triggered")
-            scrape_once()
+            scrape_once(full_history=False)
         except Exception:
             traceback.print_exc()
 
@@ -140,8 +171,8 @@ def start_background_scraper():
     missing = _missing_tickers(DASHBOARD_TICKERS)
 
     if missing:
-        print(f"[scraper] Missing prices for {missing} — fetching now...")
-        scrape_once(missing)
+        print(f"[scraper] Missing candles for {missing} — fetching now...")
+        scrape_once(missing, full_history=True)
     else:
         print("[scraper] All tickers already have price data — skipping initial scrape.")
 

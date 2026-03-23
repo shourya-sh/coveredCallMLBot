@@ -8,7 +8,7 @@ class Settings(BaseSettings):
 
     dashboard_refresh_minutes: int = 15
     ohlc_outputsize: int = 1825  # ~5 years of daily bars
-    dashboard_cache_ttl_seconds: int = 20
+    dashboard_cache_ttl_seconds: int = 120
     options_cache_max_age_minutes: int = 30
 
     class Config:

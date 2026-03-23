@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -19,6 +20,8 @@ _predictor: StrategyPredictor | None = None
 _predictor_mtime: float | None = None
 _dashboard_cache: dict | None = None
 _dashboard_cache_expires_at: float = 0.0
+_snapshots_cache: dict | None = None
+_snapshots_cache_expires_at: float = 0.0
 
 
 def _get_predictor() -> StrategyPredictor | None:
@@ -61,11 +64,15 @@ def _rows_to_contracts(rows: list[dict]) -> list[OptionContract]:
     return contracts
 
 
-def _get_options(ticker: str, scraper: NasdaqOptionsScraper, force_refresh: bool = False) -> tuple[list[OptionContract], str]:
+def _get_options(ticker: str, scraper: NasdaqOptionsScraper, force_refresh: bool = False, cache_only: bool = False) -> tuple[list[OptionContract], str]:
     rows = db.get_options_chain(ticker)
     cached = _rows_to_contracts(rows)
     updated_at_str = db.get_options_chain_updated_at(ticker)
     source = db.get_options_chain_source(ticker) or "unknown"
+
+    # Dashboard path: never hit Nasdaq live — return whatever is in DB
+    if cache_only:
+        return cached or [], f"cache:{source}" if cached else "empty"
 
     cache_fresh = False
     if updated_at_str:
@@ -111,6 +118,33 @@ def _no_model_analysis(ticker: str) -> dict:
     }
 
 
+@router.get("/dashboard/snapshots")
+def dashboard_snapshots():
+    """Lightweight endpoint — price/change/history only. No ML, no options. Fast."""
+    global _snapshots_cache, _snapshots_cache_expires_at
+    now = time.time()
+    if _snapshots_cache is not None and now < _snapshots_cache_expires_at:
+        return _snapshots_cache
+    stocks = [_snapshot(ticker) for ticker in DASHBOARD_TICKERS]
+    payload = {"stocks": stocks}
+    _snapshots_cache = payload
+    _snapshots_cache_expires_at = now + 60
+    return payload
+
+
+def _analyze_ticker(ticker: str, predictor: StrategyPredictor | None) -> dict:
+    snapshot = _snapshot(ticker)
+    if predictor is None:
+        snapshot["analysis"] = _no_model_analysis(ticker)
+        return snapshot
+    contracts, chain_source = _get_options(ticker, scraper=None, cache_only=True)
+    analysis = predictor.predict(ticker, contracts=contracts)
+    analysis["options_chain_source"] = chain_source
+    analysis["options_chain_updated_at"] = db.get_options_chain_updated_at(ticker)
+    snapshot["analysis"] = analysis
+    return snapshot
+
+
 @router.get("/dashboard/stocks")
 def dashboard_stocks():
     global _dashboard_cache, _dashboard_cache_expires_at
@@ -121,26 +155,12 @@ def dashboard_stocks():
         return _dashboard_cache
 
     predictor = _get_predictor()
-    scraper = get_scraper()
-    stocks = []
 
-    for ticker in DASHBOARD_TICKERS:
-        snapshot = _snapshot(ticker)
-        if predictor is None:
-            snapshot["analysis"] = _no_model_analysis(ticker)
-        else:
-            try:
-                contracts, chain_source = _get_options(ticker, scraper)
-            except Exception:
-                contracts, chain_source = [], "unavailable"
+    with ThreadPoolExecutor(max_workers=len(DASHBOARD_TICKERS)) as pool:
+        futures = {pool.submit(_analyze_ticker, t, predictor): t for t in DASHBOARD_TICKERS}
+        results = {futures[f]: f.result() for f in as_completed(futures)}
 
-            analysis = predictor.predict(ticker, contracts=contracts)
-            analysis["options_chain_source"] = chain_source
-            analysis["options_chain_updated_at"] = db.get_options_chain_updated_at(ticker)
-            snapshot["analysis"] = analysis
-
-        stocks.append(snapshot)
-
+    stocks = [results[t] for t in DASHBOARD_TICKERS]
     payload = {"stocks": stocks, "last_updated": db.last_updated_any()}
     _dashboard_cache = payload
     _dashboard_cache_expires_at = now + settings.dashboard_cache_ttl_seconds

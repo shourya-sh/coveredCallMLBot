@@ -1,30 +1,41 @@
-import { useState, useEffect, useCallback } from 'react';
-import { fetchDashboardStocks, fetchStock } from './api';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { fetchDashboardSnapshots, fetchDashboardStocks, fetchStock } from './api';
 
 const POLL_MS = 15 * 60 * 1000; // 15 min
 
 export function useDashboardStocks() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [analysisReady, setAnalysisReady] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [error, setError] = useState(null);
+  const inflight = useRef(false);
 
   const load = useCallback(async () => {
+    if (inflight.current) return;
+    inflight.current = true;
+    setLoading(true);
+    setAnalysisReady(false);
     try {
-      setLoading(true);
-      const result = await fetchDashboardStocks();
-      setData(result.stocks);
-      // Show backend's last_updated timestamp (when data was actually scraped)
-      if (result.last_updated) {
-        setLastUpdated(new Date(result.last_updated).toLocaleTimeString());
+      // Phase 1: fast snapshots — render cards immediately
+      const snaps = await fetchDashboardSnapshots();
+      setData(snaps.stocks);
+      setLoading(false);
+
+      // Phase 2: full analysis — update in background
+      const full = await fetchDashboardStocks();
+      setData(full.stocks);
+      setAnalysisReady(true);
+      if (full.last_updated) {
+        setLastUpdated(new Date(full.last_updated).toLocaleTimeString());
       } else {
         setLastUpdated(new Date().toLocaleTimeString());
       }
-      setError(null);
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
+      inflight.current = false;
     }
   }, []);
 
@@ -34,7 +45,7 @@ export function useDashboardStocks() {
     return () => clearInterval(id);
   }, [load]);
 
-  return { data, loading, error, lastUpdated, refresh: load };
+  return { data, loading, analysisReady, error, lastUpdated, refresh: load };
 }
 
 export function useStockLookup() {

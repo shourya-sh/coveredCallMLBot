@@ -10,10 +10,9 @@ import db
 from scraper.options import OptionContract, NasdaqOptionsScraper, get_scraper
 from ml.predict import StrategyPredictor
 from ml.types import StrategyClass
+from universe import DASHBOARD_TICKERS
 
 router = APIRouter()
-
-DASHBOARD_TICKERS = ["SPY", "QQQ", "IWM", "AAPL", "TSLA", "NVDA", "AMZN", "MSFT", "META", "SPX"]
 OPTIONS_CACHE_MAX_AGE_MINUTES = 30
 
 _predictor: StrategyPredictor | None = None

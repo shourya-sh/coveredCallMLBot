@@ -11,8 +11,8 @@ import traceback
 from datetime import datetime
 
 import httpx
+from universe import DASHBOARD_TICKERS
 
-DASHBOARD_TICKERS = ["SPY", "QQQ", "IWM", "AAPL", "TSLA", "NVDA", "AMZN", "MSFT", "META"]
 _thread: threading.Thread | None = None
 
 

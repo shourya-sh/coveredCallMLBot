@@ -1,0 +1,80 @@
+{
+  "model_path": "/app/ml/artifacts/options_strategy_model.joblib",
+  "samples_total": 16425,
+  "samples_train": 13140,
+  "samples_test": 3285,
+  "accuracy": 0.3458528951486698,
+  "labels": [
+    "BEAR_PUT_SPREAD",
+    "BULL_CALL_SPREAD",
+    "IRON_CONDOR",
+    "LONG_STRADDLE"
+  ],
+  "classification_report": {
+    "BEAR_PUT_SPREAD": {
+      "precision": 0.07479861910241657,
+      "recall": 0.3333333333333333,
+      "f1-score": 0.12218045112781954,
+      "support": 195.0
+    },
+    "BULL_CALL_SPREAD": {
+      "precision": 0.13146997929606624,
+      "recall": 0.3860182370820669,
+      "f1-score": 0.19613899613899613,
+      "support": 329.0
+    },
+    "IRON_CONDOR": {
+      "precision": 0.845708775313404,
+      "recall": 0.36941870261162596,
+      "f1-score": 0.514218704192319,
+      "support": 2374.0
+    },
+    "LONG_STRADDLE": {
+      "precision": 0.11145510835913312,
+      "recall": 0.12121212121212122,
+      "f1-score": 0.11612903225806452,
+      "support": 297.0
+    },
+    "accuracy": 0.3458528951486698,
+    "macro avg": {
+      "precision": 0.290858120517755,
+      "recall": 0.3024955985597868,
+      "f1-score": 0.23716679592929976,
+      "support": 3195.0
+    },
+    "weighted avg": {
+      "precision": 0.6568557601533836,
+      "recall": 0.3458528951486698,
+      "f1-score": 0.4205322203545743,
+      "support": 3195.0
+    }
+  },
+  "feature_importance": {
+    "close": 0.05135754635490736,
+    "sma_20": 0.04803050397813699,
+    "sma_50": 0.04524029950597808,
+    "trend_strength": 0.030647904514723392,
+    "price_vs_sma20": 0.02121232583929948,
+    "price_vs_sma50": 0.02908439656402915,
+    "rsi_14": 0.020715128187283948,
+    "macd": 0.02848020446900358,
+    "macd_signal": 0.026735174197846802,
+    "macd_hist": 0.022269739392154125,
+    "atr_14": 0.04128152255607732,
+    "rolling_std_20": 0.17024133848773168,
+    "hist_vol_20": 0.14115189129826183,
+    "bb_upper": 0.04061066651661703,
+    "bb_lower": 0.0494658731540969,
+    "bb_width": 0.08409708596275133,
+    "volume_spike": 0.018119094368518697,
+    "spy_trend_strength": 0.04817904490174977,
+    "spy_price_vs_sma20": 0.024992082184592923,
+    "spy_hist_vol_20": 0.05808817756623974
+  },
+  "backtest": {
+    "total_return": 343.3034110359283,
+    "win_rate": 0.4043956043956044,
+    "avg_return_per_trade": 0.10778757018396494,
+    "trades": 3185
+  }
+}
